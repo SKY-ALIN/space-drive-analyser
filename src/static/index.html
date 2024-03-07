@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Space Drive</title>
+    <script src="https://unpkg.com/htmx.org"></script>
+    <script src="https://unpkg.com/htmx.org/dist/ext/client-side-templates.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/nunjucks@3.2.4/browser/nunjucks.min.js"></script>
+    <!-- Alpine Plugins -->
+    <script
+      defer
+      src="https://unpkg.com/@alpinejs/morph@3.x.x/dist/cdn.min.js"
+    ></script>
+    <!-- Alpine Core -->
+    <script
+      defer
+      src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"
+    ></script>
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/water.css@2/out/water.min.css"
+    />
+    <style>
+      /* md 5px */
+      :root {
+        --sm: 4px;
+        --md: 8px;
+        --lg: 16px;
+        --xl: 20px;
+      }
+
+      .m-0 {
+        margin: 0;
+      }
+
+      .mb-sm {
+        margin-bottom: var(--sm);
+      }
+
+      .mb-md {
+        margin-bottom: var(--md);
+      }
+
+      .mb-lg {
+        margin-bottom: var(--lg);
+      }
+
+      .mb-xl {
+        margin-bottom: var(--xl);
+      }
+
+      .flex {
+        display: flex;
+      }
+
+      .align-center {
+        align-items: center;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div hx-ext="client-side-templates">
+      <div
+        hx-get="http://localhost:3334/games"
+        hx-trigger="load"
+        hx-swap="outerHTML"
+        nunjucks-array-template="games-template"
+      >
+        <template id="games-template">
+          <h1>Games</h1>
+
+          <div>
+            {% for game in data %}
+            <h2 class="m-0 mb-md">Game №{{game.id}}</h2>
+            <div class="mb-md">Date {{formatDate(game.datetime)}}</div>
+
+            <div class="mb-md flex align-center">
+              <h4 class="m-0">Winner:&nbsp;</h4>
+              <div>{{game.winner.name}} ({{game.winner.ip}})</div>
+            </div>
+
+            <div class="mb-lg">
+              <h4 class="m-0 mb-sm">Players:</h4>
+              <ol class="m-0">
+                {% for player in game.players %}
+                <li>{{player.name}} ({{game.winner.ip}})</li>
+                {% endfor %}
+              </ol>
+            </div>
+
+            <div x-data="{ open: false }">
+              <button x-show="!open" @click="open = true">
+                Generate video
+              </button>
+
+              <template x-if="open">
+                <video class="mb-lg" width="320" height="240" controls>
+                  <source
+                    src="http://localhost:3334/games/{{game.id}}/video"
+                    type="video/mp4"
+                  />
+                </video>
+              </template>
+            </div>
+
+            {% if not loop.last %}
+            <hr class="mb-xl" />
+            {% endif %} {% endfor %}
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <script>
+      function formatDate(dateStr) {
+        const date = new Date(dateStr);
+        return `${date.toLocaleString()}`;
+      }
+      const env = nunjucks.configure();
+      env.addGlobal("formatDate", formatDate);
+    </script>
+  </body>
+</html>
