@@ -58,4 +58,4 @@ class HistorySchema(BaseModel):
     map: MapSchema
     history: list[StateSchema]
     players: list[PlayerSchema]
-    winner: PlayerSchema
+    winner: PlayerSchema | None
