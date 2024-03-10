@@ -1,12 +1,10 @@
 from typing import Sequence
 import uuid
 import random
-import json
 
 import matplotlib.pyplot as plt
 from matplotlib.artist import Artist
 import matplotlib.animation as animation
-from matplotlib.figure import Figure
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 
 from schemas import HistorySchema, PlayerObjectSchema, MissileObjectSchema
@@ -27,28 +25,6 @@ class Object:
 
     def __hash__(self):
         return hash(uuid.uuid4())
-
-
-class Player(Object):
-    def __init__(self, x: float, y: float, r: float, name: str):
-        self.name = name
-        self.artist = plt.Circle((x, y), r, color='r')
-        self.text = plt.Text(x+50, y+50, name, fontsize=24, ha='center', va='center', color='g')
-
-    def bind(self, space: 'Space'):
-        space.ax.add_artist(self.artist)
-        space.ax.add_artist(self.text)
-
-    def get_artists(self) -> Sequence[Artist]:
-        return self.artist, self.text
-
-    def move(self, x: float, y: float):
-        self.artist.center = (x, y)
-        self.text.center = (x+50, y+50)
-
-    def remove(self):
-        self.artist.remove()
-        self.text.remove()
 
 
 class Missile(Object):
@@ -79,6 +55,45 @@ class Barrier(Object):
         return self.artist,
 
 
+class Player(Object):
+    color = 'red'
+    font_color = 'white'
+    font_size = 800
+
+    def __init__(self, x: float, y: float, r: float, name: str):
+        self.x = x
+        self.y = y
+        self.r = r
+        self.name = name
+        self.artist = plt.Circle((x, y), r, color=self.color)
+        self.text: plt.Text | None = None
+
+    def bind(self, space: 'Space'):
+        space.ax.add_artist(self.artist)
+        self.text = space.ax.text(
+            self.x + self.r + 5,
+            self.y,
+            self.name,
+            fontsize=self.font_size,
+            color=self.font_color,
+            ha='left',
+            va='center',
+        )
+
+    def get_artists(self) -> Sequence[Artist]:
+        return (self.artist, self.text) if self.text is not None else (self.artist,)
+
+    def move(self, x: float, y: float):
+        self.artist.center = (x, y)
+        if self.text is not None:
+            self.text.set_position((x + self.r + 5, y))
+
+    def remove(self):
+        self.artist.remove()
+        if self.text is not None:
+            self.text.remove()
+
+
 class Mover:
     def __init__(self):
         self.history: list[dict[Object, tuple[float, float]]] = [{}]
@@ -95,6 +110,7 @@ class Space:
     stars_color = '#FFFFFF'
     stars_amount = 200
     dpi = 4
+    star_radius = 0.5
 
     def __init__(self, width: float, height: float):
         self.width = width
@@ -113,7 +129,7 @@ class Space:
                     random.randint(0, int(self.width)),
                     random.randint(0, int(self.height))
                 ),
-                1,
+                self.star_radius,
                 color=self.stars_color,
             ))
 
@@ -130,12 +146,27 @@ class Animator:
     def __init__(self, space: Space, mover: Mover):
         self.space = space
         self.mover = mover
+        self.active_objects: set[Object] = set()
 
     def update_frame(self, frame: int) -> Sequence[Artist]:
         artists = []
+        new_active_objects: set[Object] = set()
         for obj, (x, y) in self.mover.history[frame].items():
+            if obj not in self.active_objects:
+                self.space.add_object(obj)
+            new_active_objects.add(obj)
+
             obj.move(x, y)
             artists.extend(obj.get_artists())
+
+        for obj in self.active_objects.difference(new_active_objects):
+            try:
+                obj.remove()
+            except ValueError as e:
+                print(f"Error removing object: {e}")
+
+        self.active_objects = new_active_objects
+
         return artists
 
     def animate(self):
@@ -164,7 +195,6 @@ class AnimatorController:
         players: dict[int, Player] = {}
         missiles: dict[int, Missile] = {}
         for state in self.history.history:
-            active_objects: set[Object] = set()
             for obj in state.objects:
                 if obj.object == 'player':
                     obj: PlayerObjectSchema
@@ -172,36 +202,13 @@ class AnimatorController:
                         player_data = players_data[obj.id]
                         player = Player(x=obj.x, y=obj.y, r=obj.r, name=player_data.name)
                         players[obj.id] = player
-                        self.space.add_object(player)
                     self.mover.move(players[obj.id], (obj.x, obj.y))
-                    active_objects.add(players[obj.id])
                 elif obj.object == 'missile':
                     obj: MissileObjectSchema
                     if obj.id not in missiles:
                         missile = Missile(x=obj.x, y=obj.y)
                         missiles[obj.id] = missile
-                        self.space.add_object(missile)
                     self.mover.move(missiles[obj.id], (obj.x, obj.y))
-                    active_objects.add(missiles[obj.id])
-
-            player_ids_to_delete = []
-            for player_id, obj in players.items():
-                if obj not in active_objects:
-                    obj: Player
-                    obj.remove()
-                    player_ids_to_delete.append(player_id)
-            for player_id in player_ids_to_delete:
-                del players[player_id]
-
-            missile_ids_to_delete = []
-            for missile_id, obj in missiles.items():
-                if obj not in active_objects:
-                    obj: Missile
-                    obj.remove()
-                    missile_ids_to_delete.append(missile_id)
-            for missile_id in missile_ids_to_delete:
-                del missiles[missile_id]
-
             self.mover.next()
 
     def make(self):
